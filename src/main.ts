@@ -1,31 +1,55 @@
 import "../style.css";
 
+interface Definition {
+  definition: string;
+  example?: string;
+  synonyms?: string[];
+  antonyms?: string[];
+}
+
+interface Meaning {
+  partOfSpeech: string;
+  definitions: Definition[];
+}
+
+interface Phonetic {
+  text?: string;
+  audio?: string;
+}
+
+interface DictionaryAPIResponse {
+  word: string;
+  phonetic?: string;
+  phonetics: Phonetic[];
+  origin?: string;
+  meanings: Meaning[];
+}
+
 const dictionaryAPI = "https://api.dictionaryapi.dev/api/v2/entries/en_US/";
 
-const searchWord = async (word) => {
+const searchWord = async (word: string): Promise<DictionaryAPIResponse[]> => {
   try {
     const response = await fetch(`${dictionaryAPI}${word}`);
-    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    const data: DictionaryAPIResponse[] = await response.json();
     return data;
   } catch (error) {
-    throw new Error("Failed to fetch data from the API");
+    throw error; // Re-throw the error
   }
 };
 
-const extractWordDefinitions = (data) => {
-  if (data && Array.isArray(data)) {
-    if (data[0].meanings && Array.isArray(data[0].meanings)) {
-      return data[0].meanings;
-    }
-  }
+const extractWordDefinitions = (
+  data: DictionaryAPIResponse[] | undefined
+): Meaning[] | undefined => {
+  return data?.[0]?.meanings ?? undefined;
 };
 
-const extractWordPhonetics = (data) => {
-  if (data && Array.isArray(data)) {
-    if (data[0].phonetics && Array.isArray(data[0].phonetics)) {
-      return data[0].phonetics;
-    }
-  }
+const extractWordPhonetics = (
+  data: DictionaryAPIResponse[] | undefined
+): Phonetic[] | undefined => {
+  return data?.[0]?.phonetics ?? undefined;
 };
 
 // Helper functions for creating UI elements
@@ -68,23 +92,26 @@ const createDefinitionItem = (definitionObj) => {
   return item;
 };
 
-const displayWordDefinition = (meanings) => {
-  const definitionsSection = clearSection("definitions");
-  definitionsSection.appendChild(createHeading("Definitions"));
+const displayWordDefinition = (meanings: Meaning[] | undefined): void => {
+  const definitionsSection = document.getElementById(
+    "definitions"
+  ) as HTMLElement;
+  definitionsSection.innerHTML = ""; // Clear previous content
 
-  meanings.forEach((meaning) => {
-    const definitionDiv = createDefinitionDiv();
-    definitionsSection.appendChild(definitionDiv);
+  const definitionsHeading = `<h1 class="text-2xl font-semibold">Definitions</h1>`;
+  definitionsSection.innerHTML += definitionsHeading;
 
-    const { partOfSpeech, definitions } = meaning;
-    definitionDiv.appendChild(createPartOfSpeechElement(partOfSpeech));
-
-    const definitionsList = createDefinitionsList();
-    definitionDiv.appendChild(definitionsList);
-
-    definitions.forEach((def) => {
-      definitionsList.appendChild(createDefinitionItem(def));
-    });
+  meanings?.forEach((meaning: Meaning) => {
+    const definitionItems = meaning.definitions
+      .map((def) => `<li>${def.definition}</li>`)
+      .join("");
+    const definitionBlock = `
+      <div class="bg-sky-50">
+        <p class="px-4 py-2 font-semibold text-white bg-sky-600">${meaning.partOfSpeech}</p>
+        <ul class="p-2 ml-6 font-light list-disc text-sky-700">${definitionItems}</ul>
+      </div>
+    `;
+    definitionsSection.innerHTML += definitionBlock;
   });
 };
 
@@ -119,42 +146,49 @@ const createAudioControl = (audio) => {
   return audioControl;
 };
 
-const displayWordPhonetic = (phonetics) => {
-  const phoneticsSection = clearSection("phonetics");
+const displayWordPhonetic = (phonetics: Phonetic[] | undefined): void => {
+  const phoneticsSection = document.getElementById("phonetics") as HTMLElement;
+  phoneticsSection.innerHTML = ""; // Clear previous content
   phoneticsSection.classList.add("flex", "flex-col", "gap-4");
-  phoneticsSection.appendChild(createHeading("Phonetics"));
 
-  phonetics.forEach((phonetic) => {
-    const { text, audio } = phonetic;
-    if (!text || !audio) return;
+  const phoneticsHeading = `<h1 class="text-2xl font-semibold">Phonetics</h1>`;
+  phoneticsSection.innerHTML += phoneticsHeading;
 
-    const phoneticsDiv = createPhoneticsDiv();
-    phoneticsSection.appendChild(phoneticsDiv);
+  phonetics?.forEach((phonetic: Phonetic) => {
+    if (!phonetic.text || !phonetic.audio) return;
 
-    phoneticsDiv.appendChild(createPhoneticElement(text));
-    phoneticsDiv.appendChild(createAudioControl(audio));
+    const phoneticBlock = `
+      <div class="bg-stone-100">
+        <p class="px-4 py-3 text-white bg-stone-700">${phonetic.text}</p>
+        <audio style="width: 100%" controls>
+          <source src="${phonetic.audio}" type="audio/mpeg">
+          Your browser does not support the audio element.
+        </audio>
+      </div>
+    `;
+    phoneticsSection.innerHTML += phoneticBlock;
   });
 };
 
 // Event listener for search
-const inputWord = document.getElementById("input");
-const submitBtn = document.getElementById("submit");
+const inputWord = document.getElementById("input") as HTMLInputElement;
+const submitBtn = document.getElementById("submit") as HTMLButtonElement;
 
-submitBtn.addEventListener("click", (event) => {
-  const word = inputWord.value.trim();
+submitBtn.addEventListener("click", async (event: Event) => {
+  event.preventDefault();
+  const word: string = inputWord.value.trim();
   if (!word) return;
 
-  searchWord(word)
-    .then((data) => {
-      const meanings = extractWordDefinitions(data);
-      displayWordDefinition(meanings);
+  try {
+    const data = await searchWord(word);
+    const meanings = extractWordDefinitions(data);
+    displayWordDefinition(meanings);
 
-      const phonetics = extractWordPhonetics(data);
-      displayWordPhonetic(phonetics);
-    })
-    .catch((error) => {
-      console.error("Error: ", error);
-    });
+    const phonetics = extractWordPhonetics(data);
+    displayWordPhonetic(phonetics);
+  } catch (error) {
+    console.error("Error: ", error);
+  }
 });
 
 // Initial content (can be removed or modified as needed)
